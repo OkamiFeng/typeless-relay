@@ -1,0 +1,186 @@
+#!/bin/sh
+
+set -u
+
+LABEL=com.local.typeless-proxy-relay
+SERVICE=system/$LABEL
+PLIST=/Library/LaunchDaemons/$LABEL.plist
+LOG_FILE=/var/log/typeless-proxy-relay.log
+PAYLOAD=${TLR_PAYLOAD:-/usr/local/share/typeless-relay}
+
+if [ ! -f "$PAYLOAD/scripts/common.sh" ]; then
+    echo "Typeless Relay payload not found: $PAYLOAD" >&2
+    exit 1
+fi
+. "$PAYLOAD/scripts/common.sh"
+
+usage() {
+    cat <<'USAGE'
+Usage: tlr COMMAND
+
+Commands:
+  tlr install [--socks-port PORT]
+  tlr config socks-port PORT
+  tlr uninstall
+  tlr purge
+  tlr start
+  tlr stop
+  tlr status
+  tlr test
+  tlr log [LINE_COUNT]
+USAGE
+}
+
+command_name=${1:-help}
+shift 2>/dev/null || true
+
+case "$command_name" in
+    install)
+        installer=$PAYLOAD/scripts/install-system.sh
+        if [ "$#" -eq 0 ]; then
+            sudo /bin/sh "$installer" && echo 'Typeless Relay installed.'
+        elif [ "$#" -eq 2 ] && [ "$1" = '--socks-port' ]; then
+            if ! validate_port "$2"; then
+                echo "Invalid SOCKS port: $2" >&2
+                exit 2
+            fi
+            sudo /bin/sh "$installer" --socks-port "$2" && echo 'Typeless Relay installed.'
+        else
+            usage >&2
+            exit 2
+        fi
+        ;;
+    config)
+        if [ "$#" -ne 2 ] || [ "$1" != 'socks-port' ]; then
+            usage >&2
+            exit 2
+        fi
+        if ! validate_port "$2"; then
+            echo "Invalid SOCKS port: $2" >&2
+            exit 2
+        fi
+        sudo /bin/sh "$PAYLOAD/scripts/install-system.sh" --socks-port "$2" &&
+            echo "Clash SOCKS port set to $2."
+        ;;
+    uninstall)
+        if [ "$#" -ne 0 ]; then
+            usage >&2
+            exit 2
+        fi
+        sudo /bin/sh "$PAYLOAD/scripts/uninstall-system.sh" &&
+            echo 'Typeless Relay uninstalled. Run tlr install to restore it.'
+        ;;
+    purge)
+        if [ "$#" -ne 0 ]; then
+            usage >&2
+            exit 2
+        fi
+        stage=$(mktemp -d /private/tmp/typeless-relay-purge.XXXXXX) || exit 1
+        trap 'rm -rf "$stage"' EXIT HUP INT TERM
+        cp "$PAYLOAD/scripts/common.sh" "$stage/common.sh"
+        cp "$PAYLOAD/scripts/uninstall-system.sh" "$stage/uninstall-system.sh"
+        cp "$PAYLOAD/scripts/purge-system.sh" "$stage/purge-system.sh"
+        if sudo /bin/sh "$stage/purge-system.sh"; then
+            echo 'Typeless Relay completely removed.'
+        else
+            exit $?
+        fi
+        ;;
+    start)
+        if [ "$#" -ne 0 ]; then usage >&2; exit 2; fi
+        if launchctl print "$SERVICE" >/dev/null 2>&1; then
+            echo 'Typeless Relay is already running.'
+            exit 0
+        fi
+        if [ ! -f "$PLIST" ]; then
+            echo 'Typeless Relay is not installed. Run tlr install first.' >&2
+            exit 1
+        fi
+        sudo launchctl enable "$SERVICE" && sudo launchctl bootstrap system "$PLIST"
+        ;;
+    stop)
+        if [ "$#" -ne 0 ]; then usage >&2; exit 2; fi
+        if ! launchctl print "$SERVICE" >/dev/null 2>&1; then
+            echo 'Typeless Relay is already stopped.'
+            exit 0
+        fi
+        sudo launchctl bootout "$SERVICE"
+        ;;
+    status)
+        if [ "$#" -ne 0 ]; then usage >&2; exit 2; fi
+        if ! details=$(launchctl print "$SERVICE" 2>/dev/null); then
+            echo 'Typeless Relay: stopped'
+            exit 0
+        fi
+        state=$(printf '%s\n' "$details" | awk -F'= ' '/state =/ { print $2; exit }')
+        pid=$(printf '%s\n' "$details" | awk -F'= ' '/pid =/ { print $2; exit }')
+        if [ -n "$pid" ]; then
+            echo "Typeless Relay: ${state:-loaded} (pid $pid)"
+        else
+            echo "Typeless Relay: ${state:-loaded}"
+        fi
+        ;;
+    test)
+        if [ "$#" -ne 0 ]; then usage >&2; exit 2; fi
+        failures=0
+        if launchctl print "$SERVICE" >/dev/null 2>&1; then
+            echo '[OK] service loaded'
+        else
+            echo '[FAIL] service stopped'
+            failures=$((failures + 1))
+        fi
+
+        if nc -z -w 2 127.0.0.1 443 >/dev/null 2>&1; then
+            echo '[OK] 127.0.0.1:443 reachable'
+        else
+            echo '[FAIL] 127.0.0.1:443 unreachable'
+            failures=$((failures + 1))
+        fi
+
+        http_code=$(curl --noproxy '*' -sS -o /dev/null -w '%{http_code}' \
+            --connect-timeout 5 --max-time 15 https://api.typeless.com/) || http_code=000
+        if [ "$http_code" = 000 ]; then
+            echo '[FAIL] Typeless API unreachable'
+            failures=$((failures + 1))
+        else
+            echo "[OK] Typeless API HTTP $http_code"
+        fi
+
+        if tun_json=$(curl --unix-socket /tmp/verge/verge-mihomo.sock -sS \
+            http://localhost/configs 2>/dev/null); then
+            tun_state=$(printf '%s' "$tun_json" | plutil -extract tun.enable raw -o - - 2>/dev/null || true)
+            if [ "$tun_state" = false ]; then
+                echo '[OK] Clash TUN disabled'
+            elif [ "$tun_state" = true ]; then
+                echo '[FAIL] Clash TUN enabled'
+                failures=$((failures + 1))
+            else
+                echo '[WARN] Unable to read Clash TUN state'
+            fi
+        else
+            echo '[WARN] Clash runtime unavailable'
+        fi
+        [ "$failures" -eq 0 ]
+        ;;
+    log)
+        if [ "$#" -eq 0 ]; then
+            tail -n 50 -f "$LOG_FILE"
+        elif [ "$#" -eq 1 ]; then
+            case "$1" in
+                ''|*[!0-9]*) echo 'Usage: tlr log [LINE_COUNT]' >&2; exit 2 ;;
+            esac
+            tail -n "$1" "$LOG_FILE"
+        else
+            echo 'Usage: tlr log [LINE_COUNT]' >&2
+            exit 2
+        fi
+        ;;
+    help|-h|--help)
+        usage
+        ;;
+    *)
+        echo "Unknown command: $command_name" >&2
+        usage >&2
+        exit 2
+        ;;
+esac
