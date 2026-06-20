@@ -19,6 +19,33 @@ PAYLOAD=$PKG_ROOT/usr/local/share/typeless-relay
 RELEASE=$WORK/release
 RELEASE_PAYLOAD=$RELEASE/payload
 
+sanitize_component_package() {
+    component=$1
+    expanded=$WORK/component-expanded
+    payload_root=$WORK/component-payload
+    cleaned=$WORK/component-clean.pkg
+
+    rm -rf "$expanded" "$payload_root" "$cleaned"
+    pkgutil --expand "$component" "$expanded"
+    mkdir -p "$payload_root"
+    (
+        cd "$payload_root"
+        gzip -dc "$expanded/Payload" | cpio -idm 2>/dev/null
+    )
+    find "$payload_root" -name '._*' -delete
+    find "$expanded/Scripts" -name '._*' -delete
+    (
+        cd "$payload_root"
+        find . -print | cpio -o -R root:wheel -H odc 2>/dev/null | gzip -c > "$expanded/Payload.new"
+    )
+    mv "$expanded/Payload.new" "$expanded/Payload"
+    lsbom "$expanded/Bom" | awk '$1 !~ /(^|\/)\._/' > "$expanded/Bom.list"
+    mkbom -i "$expanded/Bom.list" "$expanded/Bom"
+    rm -f "$expanded/Bom.list"
+    pkgutil --flatten "$expanded" "$cleaned"
+    mv "$cleaned" "$component"
+}
+
 rm -rf "$DIST"
 mkdir -p \
     "$PAYLOAD/bin" \
@@ -45,6 +72,7 @@ pkgbuild \
     --identifier com.okamifeng.typeless-relay \
     --version "$VERSION" \
     "$WORK/component.pkg"
+sanitize_component_package "$WORK/component.pkg"
 productbuild \
     --package "$WORK/component.pkg" \
     "$DIST/typeless-relay-$VERSION-arm64.pkg"
