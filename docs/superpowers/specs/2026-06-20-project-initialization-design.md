@@ -105,6 +105,7 @@ curl -fsSL https://raw.githubusercontent.com/OkamiFeng/typeless-relay/main/insta
 - relay 无法连接 Clash 时记录错误并关闭对应客户端连接，不持有失效连接。
 - 发布归档必须附 SHA-256；网络安装脚本在校验通过前不执行归档内脚本。
 - Hosts 修改仅处理项目自己的起止标记块，不覆盖用户的其他条目。
+- 系统脚本兼容清理原型版使用的 `CODEX TYPELESS RELAY` Hosts 标记，避免升级后产生重复映射。
 
 ## 测试与发布
 
@@ -112,6 +113,7 @@ curl -fsSL https://raw.githubusercontent.com/OkamiFeng/typeless-relay/main/insta
 - CI 检查 Swift 构建、集成测试、shell 语法、plist 语法以及安装包构建。
 - `v*` 标签触发 Release 工作流，生成 `.pkg`、`.tar.gz` 和对应 SHA-256 文件，并附加到 GitHub Release。
 - 本地验收包括实际卸载/安装闭环、自定义端口切换、完全卸载、重新安装、LaunchDaemon 状态、`127.0.0.1:443` 监听、Typeless API HTTP 响应和 Clash TUN 关闭状态。
+- 从当前原型版迁移时，精确删除 `~/.zshrc` 中旧的 `tlr()` 函数和 `~/.local/share/typeless-relay` 旧载荷，确保 `/usr/local/bin/tlr` 是唯一命令实现。
 
 ## 文档要求
 
