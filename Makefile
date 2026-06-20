@@ -9,6 +9,7 @@ test: build
 	/bin/sh Tests/system_scripts_test.sh
 	/bin/sh Tests/tlr_test.sh
 	/bin/sh Tests/network_installer_test.sh
+	/bin/sh Tests/project_files_test.sh
 
 package: build
 	./scripts/package.sh "$(VERSION)"

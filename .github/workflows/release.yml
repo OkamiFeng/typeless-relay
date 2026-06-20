@@ -1,0 +1,30 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test and package
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          make test
+          make package VERSION="$VERSION"
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          gh release create "$GITHUB_REF_NAME" \
+            "dist/typeless-relay-$VERSION-arm64.pkg" \
+            dist/typeless-relay-arm64.tar.gz \
+            dist/typeless-relay-arm64.tar.gz.sha256 \
+            --generate-notes
