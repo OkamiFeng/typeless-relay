@@ -12,6 +12,9 @@ grep -q 'curl -fsSL https://raw.githubusercontent.com/OkamiFeng/typeless-relay/m
 grep -q 'MIT License' LICENSE
 grep -q 'Copyright (c) 2026 OkamiFeng' LICENSE
 grep -q 'macos-14' .github/workflows/ci.yml
+grep -q 'actions/checkout@v7' .github/workflows/ci.yml
+grep -q 'actions/checkout@v7' .github/workflows/release.yml
+! grep -R -q 'actions/checkout@v4' .github/workflows
 grep -q 'make package VERSION=0.0.0' .github/workflows/ci.yml
 grep -q 'gh release create' .github/workflows/release.yml
 grep -q 'permissions:' .github/workflows/release.yml
