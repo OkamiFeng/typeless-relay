@@ -5,6 +5,9 @@ set -eu
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$ROOT"
 
+[ -f assets/typeless-relay-banner.png ]
+file assets/typeless-relay-banner.png | grep -q 'PNG image data'
+grep -q 'assets/typeless-relay-banner.png' README.md
 grep -q '一觉醒来，发现typeless不开tun模式就连不上了，一怒之下就有了这个项目' README.md
 grep -q 'tlr config socks-port 7891' README.md
 grep -q 'tlr purge' README.md

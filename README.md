@@ -1,5 +1,11 @@
 # Typeless Relay
 
+<p align="center">
+  <img src="assets/typeless-relay-banner.png" alt="Typeless Relay：Typeless 经本地 127.0.0.1:443 relay 连接到 Clash SOCKS5" width="100%">
+</p>
+
+<p align="center"><sub>非官方社区项目，与 Typeless 官方无隶属或背书关系。</sub></p>
+
 一觉醒来，发现typeless不开tun模式就连不上了，一怒之下就有了这个项目
 
 Typeless Relay 是一个面向 Apple Silicon macOS 的本地 TCP 转发工具。它让 Typeless 桌面应用在 Clash TUN 关闭时，通过 Clash 的 SOCKS5/Mixed 端口访问 `api.typeless.com`。
